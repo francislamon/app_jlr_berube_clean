@@ -261,17 +261,7 @@ def calculate_total_distance(route):
 
 @app.route('/')
 def index():
-    """Serve the main page - works whether index.html is in root or templates/"""
-    # Try templates folder first, fall back to current directory
-    templates_path = os.path.join(os.path.dirname(__file__), 'templates', 'index.html')
-    root_path = os.path.join(os.path.dirname(__file__), 'index.html')
-    
-    if os.path.exists(templates_path):
-        return send_from_directory(os.path.join(os.path.dirname(__file__), 'templates'), 'index.html')
-    elif os.path.exists(root_path):
-        return send_from_directory(os.path.dirname(__file__) or '.', 'index.html')
-    else:
-        return "index.html not found. Place it in the project root or a templates/ folder.", 404
+    return send_from_directory('templates', 'index.html')
 
 @app.route('/upload-pdf', methods=['POST'])
 def upload_pdf():
@@ -453,4 +443,4 @@ def optimize():
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=False)
+    app.run(host='0.0.0.0', port=port)
