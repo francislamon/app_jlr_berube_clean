@@ -1,17 +1,43 @@
+import sys
+import logging
+
+# ── Startup debug logging ──────────────────────────────────────────────────
+logging.basicConfig(
+    stream=sys.stdout,
+    level=logging.DEBUG,
+    format='[%(levelname)s] %(message)s'
+)
+log = logging.getLogger(__name__)
+
+log.info("=== APP STARTUP ===")
+log.info(f"Python version: {sys.version}")
+
 from flask import Flask, render_template, request, jsonify, send_from_directory
+log.info("Flask imported OK")
+
 import requests
-import math
-import re
-import os
+log.info("requests imported OK")
+
+import math, re, os
 from werkzeug.utils import secure_filename
-import fitz  # PyMuPDF
+log.info("werkzeug imported OK")
+
+try:
+    import fitz  # PyMuPDF
+    log.info(f"PyMuPDF (fitz) imported OK — version {fitz.version}")
+except ImportError as e:
+    log.error(f"FAILED to import PyMuPDF (fitz): {e}")
+    fitz = None
 
 app = Flask(__name__)
-app.config['UPLOAD_FOLDER'] = 'uploads'
+
+# Use /tmp so it works on read-only filesystems (Render, Heroku, etc.)
+app.config['UPLOAD_FOLDER'] = '/tmp/uploads'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 
-# Create upload folder if it doesn't exist
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+log.info(f"Upload folder ready: {app.config['UPLOAD_FOLDER']}")
+log.info("=== APP READY ===")
 
 def calculate_distance(lat1, lon1, lat2, lon2):
     """Calculate distance between two points using Haversine formula"""
@@ -161,6 +187,8 @@ def extract_addresses_from_text(text):
 
 def extract_text_from_pdf(pdf_path):
     """Extract text from PDF file using PyMuPDF (fitz)"""
+    if fitz is None:
+        raise Exception("PyMuPDF is not installed on this server. Check deploy logs.")
     try:
         doc = fitz.open(pdf_path)
         text = ""
@@ -259,9 +287,28 @@ def calculate_total_distance(route):
         )
     return round(total, 2)
 
+@app.route('/health')
+def health():
+    """Simple health check — useful for diagnosing 502s"""
+    return jsonify({
+        'status': 'ok',
+        'python': sys.version,
+        'pymupdf': str(fitz.version) if fitz else 'NOT INSTALLED'
+    })
+
 @app.route('/')
 def index():
-    return send_from_directory('templates', 'index.html')
+    """Serve the main page - works whether index.html is in root or templates/"""
+    # Try templates folder first, fall back to current directory
+    templates_path = os.path.join(os.path.dirname(__file__), 'templates', 'index.html')
+    root_path = os.path.join(os.path.dirname(__file__), 'index.html')
+    
+    if os.path.exists(templates_path):
+        return send_from_directory(os.path.join(os.path.dirname(__file__), 'templates'), 'index.html')
+    elif os.path.exists(root_path):
+        return send_from_directory(os.path.dirname(__file__) or '.', 'index.html')
+    else:
+        return "index.html not found. Place it in the project root or a templates/ folder.", 404
 
 @app.route('/upload-pdf', methods=['POST'])
 def upload_pdf():
@@ -443,4 +490,4 @@ def optimize():
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=port, debug=False)
