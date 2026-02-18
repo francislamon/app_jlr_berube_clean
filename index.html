@@ -1,0 +1,1949 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Route Optimizer</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDsQnfoOA6BoChDy__mULcvkrOgRj3MNZI&libraries=places&loading=async&callback=onGoogleMapsReady" async defer></script>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            min-height: 100vh;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            padding: 2rem;
+            color: #e2e8f0;
+        }
+
+        .container {
+            max-width: 100%;           /* Use full screen width */
+            margin: 0 auto;
+            padding: 0 2rem;           /* Add padding on sides for spacing */
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 3rem;
+            animation: fadeInDown 0.6s ease-out;
+        }
+
+        .title {
+            font-size: 3rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 50%, #ec4899 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 0.5rem;
+            letter-spacing: -0.02em;
+        }
+
+        .subtitle {
+            color: #94a3b8;
+            font-size: 1.1rem;
+            font-weight: 400;
+        }
+
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;  /* 50/50 split */
+            gap: 2rem;
+            height: calc(100vh - 6rem); /* Full viewport minus header */
+        }
+
+        .input-panel {
+            display: flex;
+            flex-direction: column;
+            height: 100%;          /* Use full grid height */
+            overflow: hidden;      /* Don't scroll the panel */
+            padding: 0 2rem;       /* Only horizontal padding, no vertical */
+        }
+
+
+        .panel-title {
+            font-size: 1.3rem;
+            font-weight: 700;
+            margin-top: 1rem;      /* Small spacing from top */
+            margin-bottom: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: #f1f5f9;
+            flex-shrink: 0;        /* Don't shrink in flex layout */
+            transition: color 0.4s ease;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .address-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            flex: 1;              /* Fill available space */
+            min-height: 0;        /* Allow flex shrinking */
+            overflow-y: auto;     /* Scroll when needed */
+            padding-right: 0.5rem;
+        }
+
+        .address-list::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .address-list::-webkit-scrollbar-track {
+            background: rgba(148, 163, 184, 0.1);
+            border-radius: 10px;
+        }
+
+        .address-list::-webkit-scrollbar-thumb {
+            background: rgba(96, 165, 250, 0.5);
+            border-radius: 10px;
+        }
+
+        .address-item {
+            display: flex;
+            gap: 0.75rem;
+            align-items: center;
+            padding: 0.75rem;
+            background: rgba(15, 23, 42, 0.3);
+            border: 2px solid rgba(148, 163, 184, 0.1);
+            border-radius: 12px;
+            margin-bottom: 0.5rem;
+            animation: slideInLeft 0.3s ease-out;
+            cursor: move;
+            transition: all 0.2s;
+        }
+
+        .address-item:hover {
+            background: rgba(15, 23, 42, 0.5);
+            border-color: rgba(148, 163, 184, 0.2);
+        }
+
+        .address-item.dragging {
+            opacity: 0.4;
+            cursor: grabbing;
+        }
+
+        .address-item.drag-over {
+            border-color: #60a5fa;
+            background: rgba(96, 165, 250, 0.15);
+            transform: translateY(-4px);
+            box-shadow: 0 4px 12px rgba(96, 165, 250, 0.3);
+        }
+
+        .address-number {
+            flex-shrink: 0;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #3b82f6, #2563eb);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 0.85rem;
+            color: white;
+            font-family: 'Space Mono', monospace;
+        }
+
+        .pdf-source {
+            flex-shrink: 0;
+            background: rgba(96, 165, 250, 0.15);
+            border: 1px solid rgba(96, 165, 250, 0.3);
+            border-radius: 8px;
+            padding: 0.4rem 0.75rem;
+            font-size: 0.8rem;
+            color: #93c5fd;
+            font-family: 'Space Mono', monospace;
+            max-width: 150px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-weight: 500;
+        }
+
+        .address-input {
+            flex: 1;
+            background: rgba(15, 23, 42, 0.6);
+            border: 2px solid rgba(148, 163, 184, 0.2);
+            border-radius: 12px;
+            padding: 0.75rem 1rem;
+            color: #f1f5f9;
+            font-size: 0.95rem;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+
+        .address-input:focus {
+            outline: none;
+            border-color: #60a5fa;
+            box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.1);
+        }
+
+        .address-input.failed {
+            border-color: #ef4444;
+            background: rgba(239, 68, 68, 0.1);
+        }
+
+        .address-input.failed:focus {
+            border-color: #f87171;
+            box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2);
+        }
+
+        .address-input.processing {
+            border-color: #60a5fa;
+            background: rgba(59, 130, 246, 0.1);
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                border-color: #60a5fa;
+                box-shadow: 0 0 0 0 rgba(96, 165, 250, 0.4);
+            }
+            50% {
+                border-color: #3b82f6;
+                box-shadow: 0 0 0 6px rgba(96, 165, 250, 0);
+            }
+        }
+
+        .address-input::placeholder {
+            color: #64748b;
+        }
+
+        .remove-btn {
+            flex-shrink: 0;
+            background: rgba(239, 68, 68, 0.1);
+            border: none;
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            color: #ef4444;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .remove-btn:hover {
+            background: rgba(239, 68, 68, 0.2);
+            transform: scale(1.05);
+        }
+
+        .point-btn {
+            flex-shrink: 0;
+            background: rgba(148, 163, 184, 0.1);
+            border: none;
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            color: #94a3b8;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .point-btn:hover {
+            background: rgba(148, 163, 184, 0.2);
+            transform: scale(1.05);
+        }
+
+        .point-btn.start-active {
+            background: rgba(16, 185, 129, 0.2);
+            color: #10b981;
+        }
+
+        .point-btn.end-active {
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+        }
+
+        .point-btn.start-active:hover {
+            background: rgba(16, 185, 129, 0.3);
+        }
+
+        .point-btn.end-active:hover {
+            background: rgba(239, 68, 68, 0.3);
+        }
+
+        .point-btn.flag-active {
+            background: rgba(245, 158, 11, 0.2);
+            color: #f59e0b;
+        }
+
+        .point-btn.flag-active:hover {
+            background: rgba(245, 158, 11, 0.3);
+        }
+
+        .address-item.frozen {
+            border-color: rgba(245, 158, 11, 0.35) !important;
+            background: rgba(245, 158, 11, 0.06) !important;
+        }
+
+        .address-item.frozen-last {
+            border-color: rgba(245, 158, 11, 0.6) !important;
+            background: rgba(245, 158, 11, 0.1) !important;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 0.875rem 1.5rem;
+            border: none;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            transition: all 0.2s;
+            font-family: inherit;
+            flex-shrink: 0;        /* Don't shrink in flex layout */
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            color: white;
+            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(59, 130, 246, 0.5);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: rgba(148, 163, 184, 0.1);
+            color: #cbd5e1;
+            border: 2px solid rgba(148, 163, 184, 0.2);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(148, 163, 184, 0.15);
+            border-color: rgba(148, 163, 184, 0.3);
+        }
+
+        
+       .map-container {
+            position: relative;
+            height: 100%; /* Full height of the grid cell */
+            min-height: 500px; /* optional min height */
+            overflow: hidden;
+            border-radius: 20px;
+        }
+
+        #map {
+            width: 100%;
+            height: 100%; /* Fill container */
+        }
+
+        .result-banner {
+            position: absolute;
+            top: 1.5rem;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(15, 23, 42, 0.95);
+            backdrop-filter: blur(20px);
+            padding: 1rem 2rem;
+            border-radius: 12px;
+            border: 1px solid rgba(96, 165, 250, 0.3);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+            z-index: 1000;
+            animation: slideInDown 0.5s ease-out;
+            display: none;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .result-banner.show {
+            display: flex;
+        }
+
+        .result-text {
+            font-weight: 600;
+            color: #f1f5f9;
+        }
+
+        .result-distance {
+            font-family: 'Space Mono', monospace;
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #60a5fa;
+        }
+
+        .error-message {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 12px;
+            padding: 1rem;
+            color: #fca5a5;
+            display: none;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+            animation: shake 0.5s ease-out;
+            flex-shrink: 0;        /* Don't shrink in flex layout */
+        }
+
+        .error-message.show {
+            display: flex;
+        }
+
+        .dropzone {
+            border: 2px dashed rgba(96, 165, 250, 0.3);
+            border-radius: 16px;
+            padding: 1.25rem;
+            text-align: center;
+            margin-bottom: 1.5rem;
+            background: rgba(59, 130, 246, 0.05);
+            cursor: pointer;
+            transition: all 0.3s;
+            position: relative;
+            flex-shrink: 0;        /* Don't shrink in flex layout */
+        }
+
+        .dropzone:hover {
+            border-color: rgba(96, 165, 250, 0.6);
+            background: rgba(59, 130, 246, 0.1);
+        }
+
+        .dropzone.dragover {
+            border-color: #60a5fa;
+            background: rgba(59, 130, 246, 0.15);
+            transform: scale(1.02);
+        }
+
+        .dropzone-icon {
+            width: 48px;
+            height: 48px;
+            margin: 0 auto 1rem;
+            color: #60a5fa;
+        }
+
+        .dropzone-text {
+            color: #cbd5e1;
+            font-size: 1rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .dropzone-hint {
+            color: #64748b;
+            font-size: 0.875rem;
+        }
+
+        .dropzone input[type="file"] {
+            display: none;
+        }
+
+        .processing-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(15, 23, 42, 0.9);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            border-radius: 16px;
+            gap: 0.75rem;
+            color: #60a5fa;
+        }
+
+        .processing-overlay.show {
+            display: flex;
+        }
+
+        .success-message {
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            border-radius: 12px;
+            padding: 1rem;
+            color: #6ee7b7;
+            display: none;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+            animation: slideInLeft 0.3s ease-out;
+            flex-shrink: 0;        /* Don't shrink in flex layout */
+        }
+
+        .success-message.show {
+            display: flex;
+        }
+
+        .icon {
+            width: 20px;
+            height: 20px;
+            stroke: currentColor;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            fill: none;
+        }
+
+        .button-row {
+            display: flex;
+            gap: 0.75rem;            /* space between buttons */
+            margin-top: 1rem;
+            margin-bottom: 1rem;     /* Small spacing from bottom */
+            align-items: stretch;    /* make all buttons same height */
+            flex-shrink: 0;          /* Don't shrink in flex layout */
+        }
+
+        .button-row .btn {
+            flex: 1;                  /* equal width for all buttons */
+            padding: 0.75rem 1rem;   /* consistent padding */
+            font-size: 0.875rem;     /* slightly larger text */
+            border-radius: 10px;
+            white-space: nowrap;      /* prevent text wrapping */
+            min-width: 0;             /* allow flex shrinking */
+        }
+
+
+
+        .spinner {
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes slideInLeft {
+            from {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        @keyframes slideInDown {
+            from {
+                opacity: 0;
+                transform: translate(-50%, -30px);
+            }
+            to {
+                opacity: 1;
+                transform: translate(-50%, 0);
+            }
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-10px); }
+            75% { transform: translateX(10px); }
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 1024px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .title {
+                font-size: 2rem;
+            }
+        }
+
+        /* Google Places autocomplete dropdown fix */
+        .pac-container {
+            z-index: 9999 !important;
+            border-radius: 10px;
+            border: 1px solid rgba(96, 165, 250, 0.3);
+            background: #1e293b;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+            font-family: 'DM Sans', sans-serif;
+            margin-top: 4px;
+        }
+        .pac-item {
+            padding: 0.5rem 0.75rem;
+            color: #cbd5e1;
+            border-top: 1px solid rgba(148,163,184,0.1);
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+        .pac-item:hover, .pac-item-selected {
+            background: rgba(96, 165, 250, 0.15);
+        }
+        .pac-item-query {
+            color: #f1f5f9;
+            font-weight: 600;
+        }
+        .pac-icon { display: none; }
+        .pac-matched { color: #60a5fa; }
+        @media print {
+            body * {
+                visibility: hidden;
+            }
+            
+            #printContent, #printContent * {
+                visibility: visible;
+            }
+            
+            #printContent {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+            }
+            
+            .print-page {
+                page-break-after: always;
+                padding: 2cm;
+                min-height: 100vh;
+            }
+            
+            .print-page:last-child {
+                page-break-after: auto;
+            }
+            
+            .print-header {
+                font-size: 24pt;
+                font-weight: bold;
+                margin-bottom: 1cm;
+                color: #000;
+            }
+            
+            .print-address {
+                font-size: 16pt;
+                line-height: 1.6;
+                color: #000;
+            }
+            
+            .print-number {
+                font-size: 18pt;
+                font-weight: bold;
+                margin-bottom: 0.5cm;
+                color: #000;
+            }
+            
+            .print-source {
+                font-size: 12pt;
+                color: #666;
+                margin-bottom: 0.5cm;
+            }
+        }
+
+        /* Hidden print content container */
+        #printContent {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 class="title">Route Optimizer</h1>
+            <p class="subtitle">Plan the perfect route for all your stops</p>
+        </div>
+
+        <div class="main-grid">
+            <div class="input-panel">
+                <h2 class="panel-title" id="panelTitle">
+                    <svg class="icon" id="panelTitleIcon" viewBox="0 0 24 24">
+                        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                        <circle cx="12" cy="10" r="3"/>
+                    </svg>
+                    <span id="panelTitleText">Your Addresses</span>
+                </h2>
+
+
+                <div class="dropzone" id="dropzone">
+                    <svg class="dropzone-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <polyline points="14 2 14 8 20 8"/>
+                        <line x1="12" y1="18" x2="12" y2="12"/>
+                        <line x1="9" y1="15" x2="12" y2="12"/>
+                        <line x1="15" y1="15" x2="12" y2="12"/>
+                    </svg>
+                    <div class="dropzone-text">Drop PDF files here</div>
+                    <div class="dropzone-hint">or click to browse</div>
+                    <input type="file" id="fileInput" accept=".pdf" multiple>
+                    <div class="processing-overlay" id="processingOverlay">
+                        <svg class="icon spinner" viewBox="0 0 24 24">
+                            <line x1="12" y1="2" x2="12" y2="6"/>
+                            <line x1="12" y1="18" x2="12" y2="22"/>
+                            <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/>
+                            <line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/>
+                            <line x1="2" y1="12" x2="6" y2="12"/>
+                            <line x1="18" y1="12" x2="22" y2="12"/>
+                            <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/>
+                            <line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/>
+                        </svg>
+                        <span id="processingText">Extracting addresses...</span>
+                    </div>
+                </div>
+
+                <div class="address-list" id="addressList">
+                    <div class="address-item">
+                        <div class="address-number">1</div>
+                        <input 
+                            type="text" 
+                            class="address-input" 
+                            placeholder="Enter address or location"
+                            data-index="0"
+                        >
+                    </div>
+                </div>
+
+                
+
+                <button class="btn btn-primary" id="optimizeBtn">
+                    <svg class="icon" viewBox="0 0 24 24">
+                        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                    </svg>
+                    <span id="optimizeBtnText">Optimize Route</span>
+                </button>
+
+                <div class="button-row">
+                    <button class="btn btn-secondary btn-add" id="addAddressBtn">
+                        <svg class="icon" viewBox="0 0 24 24" style="width: 18px; height: 18px;">
+                            <line x1="12" y1="5" x2="12" y2="19"/>
+                            <line x1="5" y1="12" x2="19" y2="12"/>
+                        </svg>
+                        Add
+                    </button>
+
+                    <button class="btn btn-secondary" id="printBtn">
+                        <svg class="icon" viewBox="0 0 24 24" style="width: 18px; height: 18px;">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="7 10 12 15 17 10"/>
+                            <line x1="12" y1="15" x2="12" y2="3"/>
+                        </svg>
+                        Download
+                    </button>
+
+                    <button class="btn btn-secondary" id="clearBtn">
+                        <svg class="icon" viewBox="0 0 24 24" style="width: 18px; height: 18px;">
+                            <polyline points="3 6 5 6 21 6"/>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                        </svg>
+                        Clear
+                    </button>
+                </div>
+
+
+                
+            </div>
+
+            <div class="map-container">
+                <div id="map"></div>
+                
+                <div class="result-banner" id="resultBanner">
+                    <svg class="icon" viewBox="0 0 24 24" style="color: #60a5fa;">
+                        <polygon points="3 11 22 2 13 21 11 13 3 11"/>
+                    </svg>
+                    <div>
+                        <div class="result-text">Optimized Route</div>
+                        <div class="result-distance" id="resultDistance">0 km</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+    <script>
+        let map;
+        let markers = [];
+        let routeLine = null;
+        let addresses = [''];
+        let addressSources = [null]; // Track which PDF each address came from
+        let addressCoords = new Map(); // index → {lat, lng, display_name}
+        let failedAddresses = new Set(); // Track which addresses failed to geocode
+        let startPoint = null; // Index of start point (or null for first address)
+        let endPoint = null; // Index of end point (or null for last address)
+        let frozenPoint = null; // Index of freeze boundary — addresses 0..frozenPoint are locked
+        let uploadedPDFs = new Map(); // Store PDF files: Map<filename, Blob>
+
+        // Initialize map
+        function initMap() {
+            map = L.map('map').setView([40.7128, -74.0060], 12);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(map);
+        }
+
+        // Create custom numbered marker
+        function createNumberIcon(number, color) {
+            return L.divIcon({
+                html: `<div style="background-color: ${color}; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 14px; border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.3);">${number}</div>`,
+                className: '',
+                iconSize: [32, 32],
+                iconAnchor: [16, 16]
+            });
+        }
+
+        // Show error message
+        // SVG icons for panel title states
+        const ICON_DEFAULT = `<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>`;
+        const ICON_ERROR   = `<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>`;
+        const ICON_SUCCESS = `<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>`;
+        let statusResetTimer = null;
+
+        function setTitleState(text, color, iconPaths) {
+            const titleEl = document.getElementById('panelTitle');
+            const iconEl  = document.getElementById('panelTitleIcon');
+            const textEl  = document.getElementById('panelTitleText');
+            titleEl.style.color = color;
+            iconEl.innerHTML = iconPaths;
+            textEl.textContent = text;
+        }
+
+        function showError(message) {
+            setTitleState(message, '#f87171', ICON_ERROR);
+            clearTimeout(statusResetTimer);
+            statusResetTimer = setTimeout(resetTitle, 6000);
+        }
+
+        // Show success message
+        function showSuccess(message) {
+            setTitleState(message, '#6ee7b7', ICON_SUCCESS);
+            clearTimeout(statusResetTimer);
+            statusResetTimer = setTimeout(resetTitle, 6000);
+        }
+
+        function resetTitle() {
+            setTitleState('Your Addresses', '', ICON_DEFAULT);
+        }
+
+        // Clear error message
+        function clearError() {
+            resetTitle();
+        }
+
+        // Add address input
+        function addAddressInput() {
+            addresses.push('');
+            addressSources.push(null); // Manually added addresses have no PDF source
+            renderAddressList();
+        }
+
+        // Remove address input
+        function removeAddressInput(index) {
+            if (addresses.length > 1) {
+                // Remove marker from map
+                const markerToRemove = markers.find(m => m.addressIndex === index);
+                if (markerToRemove) {
+                    markerToRemove.remove();
+                    markers = markers.filter(m => m.addressIndex !== index);
+                }
+                
+                // Update all remaining markers' indices
+                markers.forEach(marker => {
+                    if (marker.addressIndex > index) {
+                        marker.addressIndex--;
+                        // Update the marker number and color
+                        const color = getMarkerColor(marker.addressIndex);
+                        marker.setIcon(createNumberIcon(marker.addressIndex + 1, color));
+                        
+                        // Update popup
+                        const isStart = marker.addressIndex === 0 && routeLine;
+                        const isEnd = marker.addressIndex === addresses.length - 2 && routeLine; // -2 because we haven't removed from array yet
+                        marker.setPopupContent(`
+                            <div style="min-width: 200px;">
+                                <strong>${isStart ? '🚀 Start' : isEnd ? '🏁 End' : `Stop ${marker.addressIndex + 1}`}</strong><br/>
+                                ${marker.displayName || ''}
+                            </div>
+                        `);
+                    }
+                });
+                
+                addresses.splice(index, 1);
+                addressSources.splice(index, 1);
+                
+                // Update failedAddresses set - shift indices down
+                const newFailedAddresses = new Set();
+                failedAddresses.forEach(failedIndex => {
+                    if (failedIndex < index) {
+                        newFailedAddresses.add(failedIndex);
+                    } else if (failedIndex > index) {
+                        newFailedAddresses.add(failedIndex - 1);
+                    }
+                });
+                failedAddresses = newFailedAddresses;
+                
+                // Update start/end points
+                if (startPoint !== null) {
+                    if (startPoint === index) {
+                        startPoint = null;
+                    } else if (startPoint > index) {
+                        startPoint--;
+                    }
+                }
+                
+                if (endPoint !== null) {
+                    if (endPoint === index) {
+                        endPoint = null;
+                    } else if (endPoint > index) {
+                        endPoint--;
+                    }
+                }
+
+                if (frozenPoint !== null) {
+                    if (frozenPoint === index) {
+                        frozenPoint = null;
+                    } else if (frozenPoint > index) {
+                        frozenPoint--;
+                    }
+                }
+
+                // Rebuild addressCoords with shifted indices
+                const newCoords = new Map();
+                addressCoords.forEach((val, idx) => {
+                    if (idx < index) newCoords.set(idx, val);
+                    else if (idx > index) newCoords.set(idx - 1, val);
+                    // idx === index is removed
+                });
+                addressCoords = newCoords;
+                
+                // If there's an active route, redraw it with the new order
+                if (routeLine) {
+                    redrawRouteWithCurrentOrder();
+                }
+                
+                renderAddressList();
+            }
+        }
+
+        // Update address value
+        function updateAddress(index, value) {
+            addresses[index] = value;
+        }
+
+        // Render address list
+        function renderAddressList() {
+            const listEl = document.getElementById('addressList');
+            listEl.innerHTML = '';
+
+            addresses.forEach((address, index) => {
+                const itemEl = document.createElement('div');
+                itemEl.className = 'address-item';
+                
+                const isFailed = failedAddresses.has(index);
+                const pdfSource = addressSources[index];
+                const isStart = startPoint === index;
+                const isEnd = endPoint === index;
+                const isFlag = frozenPoint === index;
+                const isFrozen = frozenPoint !== null && index <= frozenPoint;
+
+                if (isFrozen && !isFlag) {
+                    itemEl.classList.add('frozen');
+                } else if (isFlag) {
+                    itemEl.classList.add('frozen-last');
+                }
+                
+                itemEl.innerHTML = `
+                    <div class="address-number">${index + 1}</div>
+                    ${pdfSource ? `<div class="pdf-source" title="${pdfSource}">${pdfSource}</div>` : ''}
+                    <button class="point-btn ${isStart ? 'start-active' : ''}" data-index="${index}" data-type="start" title="${isStart ? 'Start point' : 'Set as start'}">
+                        <svg class="icon" viewBox="0 0 24 24">
+                            <circle cx="12" cy="12" r="10"/>
+                            <polyline points="12 6 12 12 16 14"/>
+                        </svg>
+                    </button>
+                    <button class="point-btn ${isFlag ? 'flag-active' : ''}" data-index="${index}" data-type="flag" title="${isFlag ? 'Unfreeze route (addresses 1–${index+1} are locked)' : 'Freeze route up to here (lock addresses 1–' + (index+1) + ')'}">
+                        <svg class="icon" viewBox="0 0 24 24">
+                            <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/>
+                            <line x1="4" y1="22" x2="4" y2="15"/>
+                        </svg>
+                    </button>
+                    <button class="point-btn ${isEnd ? 'end-active' : ''}" data-index="${index}" data-type="end" title="${isEnd ? 'End point' : 'Set as end'}">
+                        <svg class="icon" viewBox="0 0 24 24">
+                            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                        </svg>
+                    </button>
+                    <input 
+                        type="text" 
+                        class="address-input ${isFailed ? 'failed' : ''}" 
+                        placeholder="Enter address or location"
+                        value="${address}"
+                        data-index="${index}"
+                        title="${isFailed ? 'Failed to geocode - please check address' : ''}"
+                    >
+                    ${addresses.length > 1 ? `
+                        <button class="remove-btn" data-index="${index}">
+                            <svg class="icon" viewBox="0 0 24 24">
+                                <polyline points="3 6 5 6 21 6"/>
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                            </svg>
+                        </button>
+                    ` : ''}
+                `;
+
+                listEl.appendChild(itemEl);
+
+                // Attach Google Places Autocomplete to input
+                const input = itemEl.querySelector('.address-input');
+
+                const autocomplete = new google.maps.places.Autocomplete(input, {
+                    fields: ['formatted_address', 'geometry', 'name'],
+                    componentRestrictions: { country: 'ca' }
+                });
+
+                // Prevent form submit / drag when autocomplete dropdown is open
+                autocomplete.addListener('place_changed', () => {
+                    const place = autocomplete.getPlace();
+
+                    if (!place.geometry || !place.geometry.location) {
+                        // User typed something but didn't pick from dropdown — fall back to geocoding
+                        const addr = input.value.trim();
+                        if (addr) {
+                            updateAddress(index, addr);
+                            geocodeWithGoogle(index, addr);
+                        }
+                        return;
+                    }
+
+                    const lat = place.geometry.location.lat();
+                    const lng = place.geometry.location.lng();
+                    const displayName = place.formatted_address || place.name || input.value;
+
+                    // Update state
+                    addresses[index] = displayName;
+                    input.value = displayName;
+                    addressCoords.set(index, { lat, lng, display_name: displayName });
+                    failedAddresses.delete(index);
+
+                    // Plot marker immediately
+                    placeMarker(index, lat, lng, displayName);
+                    showSuccess(`📍 ${displayName.substring(0, 50)}`);
+                });
+
+                // Disable dragging when editing
+                input.addEventListener('focus', () => {
+                    itemEl.draggable = false;
+                    itemEl.style.cursor = 'text';
+                });
+
+                // Re-enable drag on blur; geocode if no coords yet
+                input.addEventListener('blur', () => {
+                    itemEl.draggable = true;
+                    itemEl.style.cursor = 'move';
+                    const addr = input.value.trim();
+                    if (addr && !addressCoords.has(index)) {
+                        updateAddress(index, addr);
+                        geocodeWithGoogle(index, addr);
+                    }
+                });
+
+                // Track text changes (clear stored coords if user edits the field)
+                input.addEventListener('input', (e) => {
+                    updateAddress(index, e.target.value);
+                    // If user modifies the text, clear the cached coords so we re-geocode
+                    addressCoords.delete(index);
+                });
+
+                // Add event listeners to start/end buttons
+                const startBtn = itemEl.querySelector('[data-type="start"]');
+                const flagBtn = itemEl.querySelector('[data-type="flag"]');
+                const endBtn = itemEl.querySelector('[data-type="end"]');
+                
+                startBtn.addEventListener('click', () => {
+                    if (startPoint === index) {
+                        startPoint = null; // Unset if clicking same one
+                    } else {
+                        startPoint = index;
+                    }
+                    renderAddressList();
+                    updateMarkerColors();
+                });
+
+                flagBtn.addEventListener('click', () => {
+                    if (frozenPoint === index) {
+                        frozenPoint = null; // Toggle off
+                    } else {
+                        frozenPoint = index;
+                    }
+                    renderAddressList();
+                    updateMarkerColors();
+                });
+                
+                endBtn.addEventListener('click', () => {
+                    if (endPoint === index) {
+                        endPoint = null; // Unset if clicking same one
+                    } else {
+                        endPoint = index;
+                    }
+                    renderAddressList();
+                    updateMarkerColors();
+                });
+
+                // Add event listener to remove button
+                const removeBtn = itemEl.querySelector('.remove-btn');
+                if (removeBtn) {
+                    removeBtn.addEventListener('click', () => {
+                        removeAddressInput(index);
+                    });
+                }
+
+                // Add drag-and-drop event listeners
+                itemEl.draggable = true;
+                itemEl.dataset.index = index;
+                
+                itemEl.addEventListener('dragstart', (e) => {
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', index);
+                    itemEl.classList.add('dragging');
+                });
+                
+                itemEl.addEventListener('dragend', (e) => {
+                    itemEl.classList.remove('dragging');
+                    // Remove drag-over class from all items
+                    document.querySelectorAll('.address-item').forEach(item => {
+                        item.classList.remove('drag-over');
+                    });
+                });
+                
+                itemEl.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                    const draggingItem = document.querySelector('.dragging');
+                    if (draggingItem && draggingItem !== itemEl) {
+                        itemEl.classList.add('drag-over');
+                    }
+                });
+                
+                itemEl.addEventListener('dragleave', (e) => {
+                    itemEl.classList.remove('drag-over');
+                });
+                
+                itemEl.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    itemEl.classList.remove('drag-over');
+                    
+                    const fromIndex = parseInt(e.dataTransfer.getData('text/plain'));
+                    const toIndex = index;
+                    
+                    if (fromIndex !== toIndex) {
+                        moveAddress(fromIndex, toIndex);
+                    }
+                });
+            });
+        }
+
+        // Move address from one position to another (drag and drop)
+        function moveAddress(fromIndex, toIndex) {
+            // Move the address
+            const movedAddress = addresses.splice(fromIndex, 1)[0];
+            addresses.splice(toIndex, 0, movedAddress);
+            
+            // Move the address source
+            const movedSource = addressSources.splice(fromIndex, 1)[0];
+            addressSources.splice(toIndex, 0, movedSource);
+            
+            // Update failed addresses set
+            const newFailedAddresses = new Set();
+            failedAddresses.forEach(failedIdx => {
+                if (failedIdx === fromIndex) {
+                    newFailedAddresses.add(toIndex);
+                } else if (fromIndex < toIndex) {
+                    // Moving down
+                    if (failedIdx > fromIndex && failedIdx <= toIndex) {
+                        newFailedAddresses.add(failedIdx - 1);
+                    } else {
+                        newFailedAddresses.add(failedIdx);
+                    }
+                } else {
+                    // Moving up
+                    if (failedIdx >= toIndex && failedIdx < fromIndex) {
+                        newFailedAddresses.add(failedIdx + 1);
+                    } else {
+                        newFailedAddresses.add(failedIdx);
+                    }
+                }
+            });
+            failedAddresses = newFailedAddresses;
+            
+            // Update start/end points
+            if (startPoint !== null) {
+                if (startPoint === fromIndex) {
+                    startPoint = toIndex;
+                } else if (fromIndex < toIndex) {
+                    if (startPoint > fromIndex && startPoint <= toIndex) {
+                        startPoint--;
+                    }
+                } else {
+                    if (startPoint >= toIndex && startPoint < fromIndex) {
+                        startPoint++;
+                    }
+                }
+            }
+            
+            if (endPoint !== null) {
+                if (endPoint === fromIndex) {
+                    endPoint = toIndex;
+                } else if (fromIndex < toIndex) {
+                    if (endPoint > fromIndex && endPoint <= toIndex) {
+                        endPoint--;
+                    }
+                } else {
+                    if (endPoint >= toIndex && endPoint < fromIndex) {
+                        endPoint++;
+                    }
+                }
+            }
+
+            if (frozenPoint !== null) {
+                if (frozenPoint === fromIndex) {
+                    frozenPoint = toIndex;
+                } else if (fromIndex < toIndex) {
+                    if (frozenPoint > fromIndex && frozenPoint <= toIndex) {
+                        frozenPoint--;
+                    }
+                } else {
+                    if (frozenPoint >= toIndex && frozenPoint < fromIndex) {
+                        frozenPoint++;
+                    }
+                }
+            }
+
+            // Rebuild addressCoords with shifted indices
+            const newCoords = new Map();
+            addressCoords.forEach((val, idx) => {
+                if (idx === fromIndex) {
+                    newCoords.set(toIndex, val);
+                } else if (fromIndex < toIndex) {
+                    if (idx > fromIndex && idx <= toIndex) newCoords.set(idx - 1, val);
+                    else newCoords.set(idx, val);
+                } else {
+                    if (idx >= toIndex && idx < fromIndex) newCoords.set(idx + 1, val);
+                    else newCoords.set(idx, val);
+                }
+            });
+            addressCoords = newCoords;
+            
+            // Update all marker addressIndex values to match new positions
+            markers.forEach(marker => {
+                const oldIdx = marker.addressIndex;
+                if (oldIdx === fromIndex) {
+                    marker.addressIndex = toIndex;
+                } else if (fromIndex < toIndex) {
+                    // Moving down
+                    if (oldIdx > fromIndex && oldIdx <= toIndex) {
+                        marker.addressIndex--;
+                    }
+                } else {
+                    // Moving up
+                    if (oldIdx >= toIndex && oldIdx < fromIndex) {
+                        marker.addressIndex++;
+                    }
+                }
+                
+                // Update marker icon with new number and color
+                const newIndex = marker.addressIndex;
+                const color = getMarkerColor(newIndex);
+                marker.setIcon(createNumberIcon(newIndex + 1, color));
+                
+                // Update popup
+                const isStart = newIndex === 0 && routeLine;
+                const isEnd = newIndex === addresses.length - 1 && routeLine;
+                marker.setPopupContent(`
+                    <div style="min-width: 200px;">
+                        <strong>${isStart ? '🚀 Start' : isEnd ? '🏁 End' : `Stop ${newIndex + 1}`}</strong><br/>
+                        ${marker.displayName || ''}
+                    </div>
+                `);
+            });
+            
+            // If there's an active route, redraw it with the new order
+            if (routeLine) {
+                redrawRouteWithCurrentOrder();
+            }
+            
+            // Re-render the list
+            renderAddressList();
+        }
+
+        // Redraw route line with current address order
+        function redrawRouteWithCurrentOrder() {
+            if (!routeLine) return;
+            
+            // Get coordinates in current order from markers
+            const coordinates = [];
+            
+            // Sort markers by their current addressIndex
+            const sortedMarkers = [...markers].sort((a, b) => a.addressIndex - b.addressIndex);
+            
+            sortedMarkers.forEach(marker => {
+                coordinates.push(marker.getLatLng());
+            });
+            
+            if (coordinates.length === 0) return;
+            
+            // Remove old route line
+            routeLine.remove();
+            
+            // Draw new route line
+            routeLine = L.polyline(coordinates, {
+                color: '#3b82f6',
+                weight: 4,
+                opacity: 0.7,
+                dashArray: '10, 10'
+            }).addTo(map);
+            
+            // Update total distance
+            updateRouteDistance();
+        }
+
+        // Update route distance display
+        function updateRouteDistance() {
+            if (!routeLine) return;
+            
+            const coordinates = routeLine.getLatLngs();
+            let totalDistance = 0;
+            
+            for (let i = 0; i < coordinates.length - 1; i++) {
+                const from = coordinates[i];
+                const to = coordinates[i + 1];
+                totalDistance += calculateDistanceClient(from.lat, from.lng, to.lat, to.lng);
+            }
+            
+            document.getElementById('resultDistance').textContent = `${totalDistance.toFixed(2)} km`;
+        }
+
+        // Calculate distance on client side (Haversine formula)
+        function calculateDistanceClient(lat1, lon1, lat2, lon2) {
+            const R = 6371; // Earth's radius in km
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                     Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                     Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }
+
+        // Clear all markers and route
+        function clearMapElements() {
+            markers.forEach(marker => marker.remove());
+            markers = [];
+            
+            if (routeLine) {
+                routeLine.remove();
+                routeLine = null;
+            }
+            
+            document.getElementById('resultBanner').classList.remove('show');
+        }
+
+        // Optimize route
+        async function optimizeRoute() {
+            clearError();
+
+            const optimizeBtn = document.getElementById('optimizeBtn');
+            const optimizeBtnText = document.getElementById('optimizeBtnText');
+            const originalText = optimizeBtnText.textContent;
+
+            // Show loading state
+            optimizeBtn.disabled = true;
+            optimizeBtnText.innerHTML = `
+                <svg class="icon spinner" viewBox="0 0 24 24">
+                    <line x1="12" y1="2" x2="12" y2="6"/>
+                    <line x1="12" y1="18" x2="12" y2="22"/>
+                    <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/>
+                    <line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/>
+                    <line x1="2" y1="12" x2="6" y2="12"/>
+                    <line x1="18" y1="12" x2="22" y2="12"/>
+                    <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/>
+                    <line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/>
+                </svg>
+                Optimizing...
+            `;
+
+            try {
+                // Determine frozen offset: addresses 0..frozenPoint are locked
+                const frozenOffset = (frozenPoint !== null) ? frozenPoint : 0;
+                // If frozen, send addresses from frozenPoint onwards (so frozenPoint addr is the forced start)
+                // If not frozen, send all addresses
+                const requestAddresses = (frozenPoint !== null)
+                    ? addresses.slice(frozenPoint)
+                    : addresses;
+                const requestStartPoint = (frozenPoint !== null)
+                    ? 0  // force start at the freeze boundary address
+                    : startPoint;
+                const requestEndPoint = (frozenPoint !== null)
+                    ? (endPoint !== null && endPoint >= frozenPoint ? endPoint - frozenPoint : null)
+                    : endPoint;
+
+                // Clear only the non-frozen markers (or all if no freeze)
+                if (frozenPoint !== null) {
+                    markers = markers.filter(m => {
+                        if (m.addressIndex >= frozenPoint) {
+                            m.remove();
+                            return false;
+                        }
+                        return true;
+                    });
+                    if (routeLine) { routeLine.remove(); routeLine = null; }
+                    document.getElementById('resultBanner').classList.remove('show');
+                } else {
+                    clearMapElements();
+                }
+
+                const response = await fetch('/optimize', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ 
+                        addresses: requestAddresses,
+                        start_point: requestStartPoint,
+                        end_point: requestEndPoint,
+                        pre_geocoded: requestAddresses.map((addr, i) => {
+                            const globalIdx = (frozenPoint !== null ? frozenPoint : 0) + i;
+                            const c = addressCoords.get(globalIdx);
+                            return c ? { lat: c.lat, lon: c.lng, display_name: c.display_name } : null;
+                        })
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Optimization failed');
+                }
+
+                // Build the full ordered route response
+                const route = data.route;
+
+                // Reconstruct full address/source arrays:
+                // frozen part (0..frozenPoint-1) stays as-is, then optimized part follows
+                const newAddresses = addresses.slice(0, frozenOffset);
+                const newAddressSources = addressSources.slice(0, frozenOffset);
+                const oldToNewIndexMap = new Map();
+                
+                // Frozen addresses keep their original indices
+                for (let i = 0; i < frozenOffset; i++) {
+                    oldToNewIndexMap.set(i, i);
+                }
+
+                // Optimized addresses get new positions starting at frozenOffset
+                route.forEach((loc, routeIdx) => {
+                    const fullOldIndex = loc.original_index + frozenOffset;
+                    const fullNewIndex = frozenOffset + routeIdx;
+                    newAddresses.push(addresses[fullOldIndex]);
+                    newAddressSources.push(addressSources[fullOldIndex]);
+                    oldToNewIndexMap.set(fullOldIndex, fullNewIndex);
+                });
+                
+                // Update addresses and sources
+                addresses = newAddresses;
+                addressSources = newAddressSources;
+                
+                // Update failedAddresses set with new indices
+                const newFailedAddresses = new Set();
+                failedAddresses.forEach(oldIndex => {
+                    if (oldToNewIndexMap.has(oldIndex)) {
+                        newFailedAddresses.add(oldToNewIndexMap.get(oldIndex));
+                    }
+                });
+                failedAddresses = newFailedAddresses;
+
+                // Add markers for the optimized portion
+                route.forEach((loc, routeIdx) => {
+                    const globalIndex = frozenOffset + routeIdx;
+                    const isStart = globalIndex === 0;
+                    const isEnd = globalIndex === addresses.length - 1;
+                    const color = isStart ? '#10b981' : isEnd ? '#ef4444' : '#3b82f6';
+
+                    const marker = L.marker([loc.lat, loc.lon], {
+                        icon: createNumberIcon(globalIndex + 1, color)
+                    }).addTo(map);
+                    
+                    marker.addressIndex = globalIndex;
+                    marker.displayName = loc.display_name;
+
+                    marker.bindPopup(`
+                        <div style="min-width: 200px;">
+                            <strong>${isStart ? '🚀 Start' : isEnd ? '🏁 End' : `Stop ${globalIndex + 1}`}</strong><br/>
+                            ${loc.display_name}
+                        </div>
+                    `);
+
+                    markers.push(marker);
+                });
+
+                // Update frozen marker icons/numbers (they keep their positions, just refresh display)
+                markers.forEach(m => {
+                    if (m.addressIndex < frozenOffset) {
+                        const color = getMarkerColor(m.addressIndex);
+                        m.setIcon(createNumberIcon(m.addressIndex + 1, color));
+                    }
+                });
+
+                // Draw route line across all markers (frozen + optimized)
+                const sortedMarkers = [...markers].sort((a, b) => a.addressIndex - b.addressIndex);
+                const coordinates = sortedMarkers.map(m => m.getLatLng());
+
+                routeLine = L.polyline(coordinates, {
+                    color: '#3b82f6',
+                    weight: 4,
+                    opacity: 0.7,
+                    dashArray: '10, 10'
+                }).addTo(map);
+
+                // Fit map to bounds
+                const allCoords = sortedMarkers.map(m => [m.getLatLng().lat, m.getLatLng().lng]);
+                const bounds = L.latLngBounds(allCoords);
+                map.fitBounds(bounds, { padding: [50, 50] });
+
+                // Update start/end points
+                if (startPoint !== null) {
+                    startPoint = frozenOffset > 0 ? Math.min(startPoint, frozenOffset) : 0;
+                }
+                if (endPoint !== null) {
+                    endPoint = addresses.length - 1;
+                }
+                // frozenPoint stays — it still refers to the same boundary address
+                
+                // Re-render the address list with new order
+                renderAddressList();
+
+                // Show result banner
+                document.getElementById('resultDistance').textContent = `${data.total_distance} km`;
+                document.getElementById('resultBanner').classList.add('show');
+
+            } catch (error) {
+                showError(error.message);
+            } finally {
+                // Reset button state
+                optimizeBtn.disabled = false;
+                optimizeBtnText.textContent = originalText;
+            }
+        }
+
+        // Clear all
+        function clearAll() {
+            addresses = [''];
+            addressSources = [null];
+            failedAddresses.clear();
+            addressCoords.clear();
+            startPoint = null;
+            endPoint = null;
+            frozenPoint = null;
+            uploadedPDFs.clear(); // Clear stored PDF files
+            renderAddressList();
+            clearMapElements();
+        }
+
+        // Handle file upload
+        async function handleFiles(files) {
+            if (files.length === 0) return;
+
+            // Check if all files are PDFs
+            const pdfFiles = Array.from(files).filter(file => file.name.toLowerCase().endsWith('.pdf'));
+            
+            if (pdfFiles.length === 0) {
+                showError('Please upload PDF files only');
+                return;
+            }
+
+            // Store PDF files in memory for printing later
+            pdfFiles.forEach(file => {
+                const filename = file.name.replace(/\.pdf$/i, '');
+                uploadedPDFs.set(filename, file);
+            });
+
+            const formData = new FormData();
+            pdfFiles.forEach(file => {
+                formData.append('files', file);
+            });
+
+            // Show processing overlay
+            const processingOverlay = document.getElementById('processingOverlay');
+            const processingText = document.getElementById('processingText');
+            processingOverlay.classList.add('show');
+            processingText.textContent = 'Extracting addresses...';
+
+            try {
+                const response = await fetch('/upload-pdf', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to process PDFs');
+                }
+
+                // Add extracted addresses to the list
+                const extractedData = data.addresses || [];
+                
+                if (extractedData.length === 0) {
+                    showError('No addresses found in the PDF(s)');
+                } else {
+                    // Filter out empty addresses
+                    addresses = addresses.filter(addr => addr.trim() !== '');
+                    addressSources = addressSources.filter((_, idx) => addresses[idx] && addresses[idx].trim() !== '');
+                    
+                    // Track the starting index for new addresses
+                    const startIndex = addresses.length;
+                    
+                    // Add each extracted address with its source PDF name from backend
+                    const extractedAddresses = [];
+                    extractedData.forEach(item => {
+                        addresses.push(item.address);
+                        addressSources.push(item.source);
+                        extractedAddresses.push(item.address);
+                    });
+                    
+                    renderAddressList();
+                    
+                    // Update processing text
+                    processingText.textContent = 'Plotting on map...';
+                    
+                    // Automatically plot NEW addresses on the map with progress (keeping existing markers)
+                    await plotAddressesOnMap(extractedAddresses, startIndex);
+                    
+                    const successCount = extractedAddresses.length - failedAddresses.size;
+                    showSuccess(`Found ${extractedAddresses.length} addresses - Plotted: ${successCount}, Failed: ${failedAddresses.size}`);
+                }
+
+            } catch (error) {
+                showError(error.message);
+            } finally {
+                // Hide processing overlay
+                processingOverlay.classList.remove('show');
+            }
+        }
+
+        // Plot addresses on map without optimization (keeps existing markers, adds new ones)
+        // Geocode a batch of addresses using Google Geocoding API (for PDF imports)
+        async function plotAddressesOnMap(addressesToPlot, startIndex) {
+            try {
+                const processingText = document.getElementById('processingText');
+                const geocoder = new google.maps.Geocoder();
+                let plottedCount = 0;
+                let failedCount = 0;
+
+                for (let i = 0; i < addressesToPlot.length; i++) {
+                    const address = addressesToPlot[i];
+                    const addressIndex = startIndex + i;
+
+                    processingText.textContent = `Geocoding ${i + 1}/${addressesToPlot.length} — Plotted: ${plottedCount}, Failed: ${failedCount}`;
+
+                    // Highlight current row
+                    document.querySelectorAll('.address-input').forEach((inp, idx) => {
+                        inp.classList.toggle('processing', idx === addressIndex);
+                    });
+
+                    await new Promise(resolve => {
+                        geocoder.geocode({ address, region: 'ca' }, (results, status) => {
+                            if (status === 'OK' && results[0]) {
+                                const loc = results[0].geometry.location;
+                                const lat = loc.lat();
+                                const lng = loc.lng();
+                                const displayName = results[0].formatted_address;
+
+                                addressCoords.set(addressIndex, { lat, lng, display_name: displayName });
+                                failedAddresses.delete(addressIndex);
+                                plottedCount++;
+
+                                // Remove old marker if any
+                                const existing = markers.find(m => m.addressIndex === addressIndex);
+                                if (existing) existing.remove();
+                                markers = markers.filter(m => m.addressIndex !== addressIndex);
+
+                                const color = getMarkerColor(addressIndex);
+                                const marker = L.marker([lat, lng], {
+                                    icon: createNumberIcon(addressIndex + 1, color)
+                                }).addTo(map);
+                                marker.addressIndex = addressIndex;
+                                marker.displayName = displayName;
+                                marker.bindPopup(`<div style="min-width:200px;"><strong>Stop ${addressIndex + 1}</strong><br/>${displayName}</div>`);
+                                markers.push(marker);
+                                map.setView([lat, lng], 13);
+                            } else {
+                                failedAddresses.add(addressIndex);
+                                failedCount++;
+                            }
+                            resolve();
+                        });
+                    });
+
+                    // Small delay to avoid hitting Google rate limits
+                    await new Promise(r => setTimeout(r, 200));
+                }
+
+                document.querySelectorAll('.address-input').forEach(inp => inp.classList.remove('processing'));
+                renderAddressList();
+
+                if (markers.length > 0) {
+                    const bounds = L.latLngBounds(markers.map(m => m.getLatLng()));
+                    map.fitBounds(bounds, { padding: [50, 50] });
+                }
+
+                if (plottedCount === 0) {
+                    showError('Could not geocode any addresses');
+                }
+
+            } catch (error) {
+                console.error('Error plotting addresses:', error);
+                showError('Failed to plot addresses on map');
+            }
+        }
+
+        // Place a marker on the map for a given index + coordinates
+        function placeMarker(index, lat, lng, displayName) {
+            // Remove existing marker for this index
+            const existing = markers.find(m => m.addressIndex === index);
+            if (existing) { existing.remove(); }
+            markers = markers.filter(m => m.addressIndex !== index);
+
+            const color = getMarkerColor(index);
+            const marker = L.marker([lat, lng], {
+                icon: createNumberIcon(index + 1, color)
+            }).addTo(map);
+
+            marker.addressIndex = index;
+            marker.displayName = displayName;
+            marker.bindPopup(`
+                <div style="min-width: 200px;">
+                    <strong>Stop ${index + 1}</strong><br/>
+                    ${displayName}
+                </div>
+            `);
+            markers.push(marker);
+            map.setView([lat, lng], 14);
+            renderAddressList();
+        }
+
+        // Geocode using Google Geocoding API (fallback for manual text / PDF imports)
+        async function geocodeWithGoogle(index, address) {
+            if (!address || !address.trim()) return;
+            try {
+                const geocoder = new google.maps.Geocoder();
+                geocoder.geocode({ address, region: 'ca' }, (results, status) => {
+                    if (status === 'OK' && results[0]) {
+                        const loc = results[0].geometry.location;
+                        const lat = loc.lat();
+                        const lng = loc.lng();
+                        const displayName = results[0].formatted_address;
+                        addressCoords.set(index, { lat, lng, display_name: displayName });
+                        failedAddresses.delete(index);
+                        placeMarker(index, lat, lng, displayName);
+                        showSuccess(`📍 ${displayName.substring(0, 50)}`);
+                    } else {
+                        failedAddresses.add(index);
+                        renderAddressList();
+                        showError(`Cannot find: ${address.substring(0, 40)}`);
+                    }
+                });
+            } catch (err) {
+                failedAddresses.add(index);
+                renderAddressList();
+            }
+        }
+
+        
+        function getMarkerColor(index) {
+            if (startPoint === index) return '#10b981'; // Green for start
+            if (endPoint === index) return '#ef4444'; // Red for end
+            if (frozenPoint === index) return '#f59e0b'; // Amber for freeze boundary
+            return '#3b82f6'; // Blue for normal
+        }
+
+        // Update marker colors when start/end points change
+        function updateMarkerColors() {
+            markers.forEach(marker => {
+                const index = marker.addressIndex;
+                if (index !== undefined) {
+                    const color = getMarkerColor(index);
+                    marker.setIcon(createNumberIcon(index + 1, color));
+                }
+            });
+        }
+
+        // Dropzone functionality
+        function initDropzone() {
+            const dropzone = document.getElementById('dropzone');
+            const fileInput = document.getElementById('fileInput');
+
+            // Click to browse
+            dropzone.addEventListener('click', (e) => {
+                if (e.target !== fileInput) {
+                    fileInput.click();
+                }
+            });
+
+            // File input change
+            fileInput.addEventListener('change', (e) => {
+                handleFiles(e.target.files);
+                fileInput.value = ''; // Reset input
+            });
+
+            // Drag and drop
+            dropzone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropzone.classList.add('dragover');
+            });
+
+            dropzone.addEventListener('dragleave', (e) => {
+                e.preventDefault();
+                dropzone.classList.remove('dragover');
+            });
+
+            dropzone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropzone.classList.remove('dragover');
+                handleFiles(e.dataTransfer.files);
+            });
+        }
+
+        // Event listeners
+        document.getElementById('addAddressBtn').addEventListener('click', addAddressInput);
+        document.getElementById('optimizeBtn').addEventListener('click', optimizeRoute);
+        document.getElementById('clearBtn').addEventListener('click', clearAll);
+
+        // Called by Google Maps once its API is ready
+        window.onGoogleMapsReady = function() {
+            initMap();
+            initDropzone();
+            renderAddressList();
+            document.getElementById('printBtn').addEventListener('click', mergePDFs);
+        };
+
+        // Merge PDFs and download - merges all PDFs in address list order
+        async function mergePDFs() {
+            try {
+                // Get list of PDFs in order they appear in address list
+                const pdfsInOrder = [];
+                const seenPDFs = new Set();
+                
+                addresses.forEach((address, index) => {
+                    const source = addressSources[index];
+                    if (source && !seenPDFs.has(source) && uploadedPDFs.has(source)) {
+                        pdfsInOrder.push(source);
+                        seenPDFs.add(source);
+                    }
+                });
+                
+                if (pdfsInOrder.length === 0) {
+                    showError('No PDF files available to merge. Please upload PDFs first.');
+                    return;
+                }
+                
+                // Show processing message
+                const btn = document.getElementById('printBtn');
+                const originalText = btn.innerHTML;
+                btn.disabled = true;
+                btn.innerHTML = `
+                    <svg class="icon spinner" viewBox="0 0 24 24">
+                        <line x1="12" y1="2" x2="12" y2="6"/>
+                        <line x1="12" y1="18" x2="12" y2="22"/>
+                        <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/>
+                        <line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/>
+                        <line x1="2" y1="12" x2="6" y2="12"/>
+                        <line x1="18" y1="12" x2="22" y2="12"/>
+                        <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/>
+                        <line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/>
+                    </svg>
+                    Merging ${pdfsInOrder.length} PDF(s)...
+                `;
+                
+                // Create a new merged PDF
+                const { PDFDocument } = PDFLib;
+                const mergedPdf = await PDFDocument.create();
+                
+                // Process each PDF in order
+                for (let i = 0; i < pdfsInOrder.length; i++) {
+                    const pdfName = pdfsInOrder[i];
+                    const pdfBlob = uploadedPDFs.get(pdfName);
+                    
+                    if (pdfBlob) {
+                        // Read the PDF
+                        const arrayBuffer = await pdfBlob.arrayBuffer();
+                        const pdf = await PDFDocument.load(arrayBuffer);
+                        
+                        // Copy all pages from this PDF to merged PDF
+                        const copiedPages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
+                        copiedPages.forEach((page) => {
+                            mergedPdf.addPage(page);
+                        });
+                    }
+                }
+                
+                // Save the merged PDF
+                const mergedPdfBytes = await mergedPdf.save();
+                
+                // Create blob and download
+                const blob = new Blob([mergedPdfBytes], { type: 'application/pdf' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `route-optimized-${new Date().toISOString().split('T')[0]}.pdf`;
+                link.click();
+                
+                // Clean up
+                URL.revokeObjectURL(url);
+                
+                showSuccess(`Downloaded merged PDF with ${pdfsInOrder.length} file(s): ${pdfsInOrder.join(', ')}`);
+                
+                // Reset button
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+                
+            } catch (error) {
+                console.error('Error merging PDFs:', error);
+                showError(`Failed to merge PDFs: ${error.message}`);
+                
+                // Reset button
+                const btn = document.getElementById('printBtn');
+                btn.disabled = false;
+                btn.innerHTML = `
+                    <svg class="icon" viewBox="0 0 24 24">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="7 10 12 15 17 10"/>
+                        <line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                    Download Combined PDF
+                `;
+            }
+        }
+    </script>
+
+    <!-- Hidden print content -->
+    <div id="printContent"></div>
+</body>
+</html>
